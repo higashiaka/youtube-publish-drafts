@@ -7,6 +7,9 @@
 
     function click(element) {
         if (!element || element.hasAttribute('disabled') || element.disabled) return false;
+        // 새로운 버튼 구조는 mousedown/mouseup이 세트로 발생해야 트리거됨
+        element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+        element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
         element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
         return true;
     }
@@ -27,7 +30,7 @@
             for (let t = 0; t < 50; t++) {
                 modal = document.querySelector('ytcp-uploads-dialog');
                 if (modal) break;
-                await sleep(50); // 모달 오픈 대기 단축
+                await sleep(50);
             }
             if (!modal) continue;
 
@@ -39,7 +42,7 @@
                     if (nextBtn && !nextBtn.disabled && !nextBtn.hasAttribute('disabled')) {
                         if (click(nextBtn)) {
                             clicked = true;
-                            await sleep(150); // 전환 대기 최소화
+                            await sleep(150);
                         }
                     } else {
                         await sleep(RETRY_INTERVAL_MS);
@@ -61,44 +64,48 @@
                 }
             }
 
-            // --- 4. 결과창 닫기 및 모달 소멸 동시 감시 (딜레이 최적화) ---
+            // --- 4. 결과창 닫기 및 모달 소멸 동시 감시 ---
             let closed = false;
             let checkCount = 0;
-            const MAX_CHECKS = 150; // 0.2초 * 150 = 30초
+            const MAX_CHECKS = 150;
 
             while (!closed) {
-                // 체크 주기를 0.2초로 단축하여 반응 속도 향상
                 await sleep(200);
                 checkCount++;
 
-                // 1순위 체크: 메인 모달이 사라졌는가? (가장 빠른 탈출 조건)
                 const mainModal = document.querySelector('ytcp-uploads-dialog');
                 if (!mainModal || mainModal.offsetParent === null) {
-                    console.log(`[${idx + 1}/${videoRows.length}] ✅ 모달 소멸 확인 (즉시 다음 이동)`);
+                    console.log(`[${idx + 1}/${videoRows.length}] ✅ 모달 소멸 확인`);
                     closed = true;
                     break;
                 }
 
-                // 2순위 체크: 결과창 닫기 버튼이 보이는가?
+                // [최종 보강된 선택자] 보내주신 HTML 구조(ytcpButtonShapeImplHost) 반영
                 const selectors = [
+                    'button[aria-label="닫기"]',
+                    'button[aria-label="Close"]',
+                    '.ytcpButtonShapeImplHost[aria-label="닫기"]',
                     'ytcp-video-share-dialog #close-button',
-                    'ytcp-video-share-dialog #close-icon-button'
+                    'ytcp-button[label="닫기"]'
                 ];
 
                 for (let sel of selectors) {
-                    const btn = document.querySelector(sel);
-                    if (btn && btn.offsetParent !== null) {
-                        click(btn);
-                        const innerBtn = btn.querySelector('button');
-                        if (innerBtn) click(innerBtn);
+                    const btns = document.querySelectorAll(sel);
+                    for (let btn of btns) {
+                        // 화면에 보이는 버튼인지 확인
+                        if (btn && btn.offsetParent !== null) {
+                            click(btn);
+                            
+                            // 버튼 내부 텍스트가 "닫기"인 경우 한 번 더 확실히 클릭
+                            const textContent = btn.querySelector('.ytcpButtonShapeImpl__button-text-content');
+                            if (textContent) click(textContent);
 
-                        // 클릭 후 아주 짧게 대기하고 바로 다음 루프에서 모달 소멸 체크
-                        await sleep(150);
-                        break;
+                            await sleep(150);
+                            break;
+                        }
                     }
                 }
 
-                // 타임아웃 시 종료
                 if (checkCount >= MAX_CHECKS) {
                     console.error(`[중단] 결과창 미감지 타임아웃.`);
                     return;
@@ -106,7 +113,7 @@
             }
 
             console.log(`[${idx + 1}/${videoRows.length}] 작업 완료 ✓`);
-            await sleep(100); // 영상 간 간격 최소화
+            await sleep(100);
         }
         console.log("[전체 종료]");
     }
